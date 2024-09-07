@@ -18,7 +18,7 @@ type collectionSpecification struct {
 }
 
 type versionRecord struct {
-	Version     uint64    `bson:"version"`
+	Version     string    `bson:"version"`
 	Description string    `bson:"description,omitempty"`
 	Timestamp   time.Time `bson:"timestamp"`
 }
@@ -127,9 +127,9 @@ func (m *Migrate) getCollections(ctx context.Context) (collections []collectionS
 }
 
 // Version returns current database version and comment.
-func (m *Migrate) Version(ctx context.Context) (uint64, string, error) {
+func (m *Migrate) Version(ctx context.Context) (string, string, error) {
 	if err := m.createCollectionIfNotExist(ctx, m.migrationsCollection); err != nil {
-		return 0, "", err
+		return "", "", err
 	}
 
 	filter := bson.D{{}}
@@ -141,21 +141,21 @@ func (m *Migrate) Version(ctx context.Context) (uint64, string, error) {
 	err := result.Err()
 	switch {
 	case errors.Is(err, mongo.ErrNoDocuments):
-		return 0, "", nil
+		return "", "", nil
 	case err != nil:
-		return 0, "", err
+		return "", "", err
 	}
 
 	var rec versionRecord
 	if err := result.Decode(&rec); err != nil {
-		return 0, "", err
+		return "", "", err
 	}
 
 	return rec.Version, rec.Description, nil
 }
 
 // SetVersion forcibly changes database version to provided one.
-func (m *Migrate) SetVersion(ctx context.Context, version uint64, description string) error {
+func (m *Migrate) SetVersion(ctx context.Context, version string, description string) error {
 	rec := versionRecord{
 		Version:     version,
 		Timestamp:   time.Now().UTC(),
@@ -173,22 +173,23 @@ func (m *Migrate) SetVersion(ctx context.Context, version uint64, description st
 // Up performs "up" migrations to latest available version.
 // If n<=0 all "up" migrations with newer versions will be performed.
 // If n>0 only n migrations with newer version will be performed.
-func (m *Migrate) Up(ctx context.Context, n int) error {
+func (m *Migrate) Up(ctx context.Context, n string) error {
 	currentVersion, _, err := m.Version(ctx)
 	if err != nil {
 		return err
 	}
-	if n <= 0 || n > len(m.migrations) {
-		n = len(m.migrations)
+
+	if n == "" {
+		return nil
 	}
 	migrationSort(m.migrations)
 
-	for i, p := 0, 0; i < len(m.migrations) && p < n; i++ {
+	for i := 0; i < len(m.migrations); i++ {
 		migration := m.migrations[i]
-		if migration.Version <= currentVersion || migration.Up == nil {
+		if migration.Version != currentVersion || migration.Up == nil {
 			continue
 		}
-		p++
+
 		if err := migration.Up(ctx, m.db); err != nil {
 			return err
 		}
@@ -226,7 +227,7 @@ func (m *Migrate) Down(ctx context.Context, n int) error {
 
 		var prevMigration Migration
 		if i == 0 {
-			prevMigration = Migration{Version: 0}
+			prevMigration = Migration{Version: ""}
 		} else {
 			prevMigration = m.migrations[i-1]
 		}
@@ -244,11 +245,11 @@ func (m *Migrate) SetLogger(log Logger) {
 	m.log = log
 }
 
-func (m *Migrate) printUp(migrationVersion uint64, migrationDescription string) {
+func (m *Migrate) printUp(migrationVersion string, migrationDescription string) {
 	m.printf("Migrated UP: %d %s", migrationVersion, migrationDescription)
 }
 
-func (m *Migrate) printDown(migrationVersion uint64, migrationDescription string) {
+func (m *Migrate) printDown(migrationVersion string, migrationDescription string) {
 	m.printf("Migrated DOWN: %d %s", migrationVersion, migrationDescription)
 }
 

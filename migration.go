@@ -21,7 +21,7 @@ type MigrationFunc func(ctx context.Context, db *mongo.Database) error
 //
 // - down: callback which will be called in "down" migration process for reverting changes
 type Migration struct {
-	Version     uint64
+	Version     string
 	Description string
 	Up          MigrationFunc
 	Down        MigrationFunc
@@ -33,7 +33,7 @@ func migrationSort(migrations []Migration) {
 	})
 }
 
-func hasVersion(migrations []Migration, version uint64) bool {
+func hasVersion(migrations []Migration, version string) bool {
 	for _, m := range migrations {
 		if m.Version == version {
 			return true
